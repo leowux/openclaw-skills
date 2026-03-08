@@ -1,65 +1,71 @@
 ---
 name: rednote-photographer-workflow
-description: 小红书摄影师作品自动发布工作流。用于搜索 Instagram 知名摄影师、分析其创作风格、获取代表作品并自动生成小红书文案发布。触发条件：用户提到"发布小红书笔记"、"分享摄影师"、"审美提升"、"摄影作品"等关键词时。
+description: 小红书摄影师作品自动发布工作流。用于搜索知名摄影师、分析其创作风格、获取代表作品并自动生成小红书文案发布。触发条件：用户提到"发布小红书笔记"、"分享摄影师"、"审美提升"、"摄影作品"等关键词时。
 ---
 
 # 小红书摄影师作品发布工作流
 
-自动完成从 Instagram 摄影师发现到小红书笔记发布的完整流程。
+自动完成从摄影师发现到小红书笔记发布的完整流程。
 
 ## 工作流程
 
-### Step 1: 搜索 Instagram 摄影师
+### Step 1: 搜索摄影师
 
-使用浏览器工具访问以下第三方 Instagram 查看器（无需登录）：
+使用 `tavily_search` 工具搜索摄影师作品，携带以下参数：
+- `include_images: true` - 包含图片
+- `include_image_descriptions: true` - 包含图片描述
+- `count: 20` - 获取更多结果
 
-**推荐平台（按优先级）：**
-1. **GramSnap** (`gramsnap.com/en/instagram-profile-viewer/`)
-   - 无使用限制
-   - 显示完整的帖子网格
-   - 支持直接下载图片
-
-2. **Insta-Stories-Viewer** (`insta-stories-viewer.com/`)
-   - 完全免费
-   - 支持 Stories 和 Publications
-   - 格式：`insta-stories-viewer.com/{username}/`
+**示例：**
+```json
+{
+  "query": "{photographer_name} photographylatest",
+  "include_images": true,
+  "include_image_descriptions": true,
+  "count": 20
+}
+```
 
 **操作步骤：**
-1. 打开 GramSnap 或 Insta-Stories-Viewer
-2. 输入摄影师用户名（如：samalive, thomaskakareko）
-3. 等待页面加载个人资料
-4. 记录关键信息：
-   - 名字
-   - 所在地
-   - 简介描述
-   - 粉丝数/帖子数
+1. 使用 Tavily 搜索获取图片和摄影师信息
+2. 从返回结果中提取：
+   - 图片 URL（`images` 数组）
+   - 图片描述（`description` 字段）
+   - 摄影师名字、所在地、简介
 
-### Step 2: 获取9张代表作品
+### Step 2: 获取9张代表作品图片 URL
 
-**选择标准：**
-- 选择最能代表该摄影师风格的图片
-- 优先选择有连贯主题的系列作品
-- 确保图片质量高、构图精美
+从 Tavily 搜索结果中提取图片 URL，**不需要下载图片**：
 
-**下载方法：**
-- GramSnap：点击 "Download" 按钮获取图片链接
-- Insta-Stories-Viewer：点击图片 → 复制下载链接 → curl 下载
+1. 检查 `tavily_search` 返回的 `images` 数组
+2. 提取图片 URL 和描述信息
+3. 筛选出9张最具代表性的图片 URL
 
-**保存位置：** `~/.openclaw/workspace-rednote/`
-**命名格式：** `{photographer_name}_{number}.jpg` (1-9)
-
-**⚠️ 重要：下载后验证图片完整性**
-```bash
-# 检查文件大小（小于1KB的可能已损坏）
-ls -lh {photographer_name}_*.jpg
-
-# 如果某张图片太小，尝试从其他来源重新下载
-# 或跳过该图片，用其他帖子补充
+**将 URL 列表保存至草稿文件：**
 ```
+~/.openclaw/workspace-rednote/rednotes/YYYY-MM-DD_{标题}/draft.md
+```
+
+**draft.md 格式示例：**
+```markdown
+# {摄影师名} - 小红书草稿
+
+## 图片 URL
+1. https://...
+2. https://...
+3. https://...
+
+## 摄影师信息
+- 名字：
+- 所在地：
+- 风格：
+```
+
+**⚠️ 注意：** 如果某个 URL 无法访问，从搜索结果中替换其他图片 URL，确保所有链接有效。
 
 ### Step 3: 分析摄影风格
 
-观察下载的9张图片，提取以下特征：
+根据图片 URL 对应的图片描述（`description` 字段）和搜索结果文本分析以下特征：
 
 | 维度 | 分析要点 | 示例 |
 |------|---------|------|
@@ -123,28 +129,41 @@ ls -lh {photographer_name}_*.jpg
   - 4-8张：可以正常发布，在文案中说明"精选X张"
   - 1-3张：建议补充其他来源图片或改发单图/拼图
 
-**发布命令：**
+**将最终文案保存至：**
+```
+~/.openclaw/workspace-rednote/rednotes/YYYY-MM-DD_{标题}/note.md
+```
+
+**发布命令（直接传入图片 URL，无需下载）：**
 ```bash
 python ~/.openclaw/skills/xiaohongshu-mcp/scripts/xhs_client.py publish \
     "审美积累｜{风格标签}{摄影师名}" \
     "{正文内容}" \
-    "{图片路径1},{图片路径2},..."
+    "{图片URL1},{图片URL2},..."
 ```
 
 **发布失败处理：**
 如果返回"图片上传超时"：
-1. 检查图片文件大小（`ls -lh *.jpg`）
-2. 删除小于1KB的损坏文件
-3. 重新下载或用备用图片替换
-4. 减少图片数量后重试
+1. 检查对应图片 URL 是否仍然可访问（可用 `curl -I` 验证）
+2. 用 Tavily 重新搜索替换失效 URL
+3. 减少图片数量后重试
+
+## 目录结构规范
+
+每篇笔记的所有素材统一存放在以下目录：
+```
+~/.openclaw/workspace-rednote/rednotes/YYYY-MM-DD_{标题}/
+├── draft.md          # 图片 URL 列表 + 摄影师信息
+└── note.md           # 最终文案（标题 + 正文）
+```
 
 ## 注意事项
 
-1. **图片数量**：建议4-9张，质量比数量更重要。如果无法获取9张高质量图片，4-5张精品图也可以发布。
-2. **版权问题**：仅使用公开账号的内容，尊重摄影师版权
-3. **风格一致性**：选择的图片应该有统一的视觉风格
-4. **文案原创性**：根据实际图片内容撰写，不要照搬模板
-5. **验证图片完整性**：下载后务必检查文件大小（正常应在50KB-500KB之间）
+1. **图片数量**：建议9张，质量比数量更重要。如果无法获取9张高质量图片，4-5张精品图也可以发布。
+2. **图片 URL 有效性**：Tavily 返回的图片 URL 可能有时效性，发布前用 `curl -I` 快速验证可访问性。
+3. **版权问题**：仅使用公开账号的内容，尊重摄影师版权
+4. **风格一致性**：选择的图片应该有统一的视觉风格
+5. **文案原创性**：根据实际图片描述撰写，不要照搬模板
 
 ## 常见摄影师推荐
 
@@ -159,37 +178,30 @@ python ~/.openclaw/skills/xiaohongshu-mcp/scripts/xhs_client.py publish \
 
 ## 故障排除
 
-### Instagram 搜索问题
+### Tavily 搜索问题
 
-**无法加载 Instagram 页面？**
-- 尝试切换不同的第三方查看器
-- 检查网络连接
-- 确认用户名正确（不含@符号）
-
-**摄影师账号显示 0 Posts？**
-- 该账号可能是私密的
-- 尝试其他摄影师（如 SamAlive 是公开账号）
-- 检查用户名拼写是否正确
-
-### 图片下载问题
+**搜索结果没有图片？**
+- 确保携带 `include_images: true` 参数
+- 尝试添加 `include_image_descriptions: true` 获取图片描述
+- 更换搜索关键词，如添加 、"portfolio"
 
 **图片下载失败？**
-- 下载链接有过期时间，需要及时使用
-- 尝试右键复制图片地址
-- 使用 curl -L 跟随重定向
+- 检查图片 URL 是否可访问
+- 使用 `curl -L` 跟随重定向
+- 尝试不同的搜索关键词重新获取图片
 
-**图片文件损坏（大小异常）？**
+### 图片 URL 问题
+
+**URL 无法访问？**
 ```bash
-# 检查图片大小
-ls -lh {photographer_name}_*.jpg
-
-# 正常图片应该在 50KB-500KB 之间
-# 如果小于 1KB，说明下载失败（可能是错误页面）
+# 快速验证 URL 可访问性
+curl -I "https://图片URL"
+# 返回 200 OK 即为有效
 ```
 
 **解决方案：**
-1. 删除损坏的图片重新下载
-2. 使用备用工具（如 Insta-Stories-Viewer）获取替代图片
+1. 重新用 Tavily 搜索获取新的图片 URL
+2. 调整搜索关键词换一批图片
 3. 减少图片数量发布（小红书支持1-9张图）
 
 ### 小红书发布问题
@@ -202,28 +214,24 @@ ls -lh {photographer_name}_*.jpg
 ```
 
 **原因分析：**
-1. 图片文件损坏（大小为0或极小）
+1. 图片 URL 已失效或无法访问
 2. 图片格式不支持
 3. 网络连接问题
 4. 小红书 API 限制
 
 **解决方案：**
-1. **验证图片完整性：**
+1. **验证所有图片 URL：**
    ```bash
-   # 检查所有图片大小
-   ls -lh *.jpg
-   
-   # 查看图片是否能正常打开
-   file *.jpg
+   curl -I "https://图片URL"
    ```
 
-2. **排除损坏图片：**
-   - 只使用验证过的有效图片
-   - 4张有效图片 > 9张含损坏图片
+2. **替换失效 URL：**
+   - 用 Tavily 重新搜索获取替代图片 URL
+   - 更新 `draft.md` 中的 URL 列表
 
 3. **分批测试：**
-   - 先用1-2张图片测试发布
-   - 确认成功后再添加更多图片
+   - 先用1-2张图片 URL 测试发布
+   - 确认成功后再添加更多
 
 **登录状态失效？**
 - 重新运行 `./xiaohongshu-login-darwin-arm64`
